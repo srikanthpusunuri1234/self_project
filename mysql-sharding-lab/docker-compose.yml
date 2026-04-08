@@ -28,32 +28,6 @@ services:
     networks:
       - backend
 
-  shard1-primary:
-    image: mysql:8
-    container_name: shard1-primary
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-    volumes:
-      - shard1-primary-data:/var/lib/mysql
-      - ./shard1/primary.cnf:/etc/mysql/conf.d/my.cnf
-    networks:
-      - backend
-
-  shard1-replica:
-    image: mysql:8
-    container_name: shard1-replica
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-    volumes:
-      - shard1-replica-data:/var/lib/mysql
-      - ./shard1/replica.cnf:/etc/mysql/conf.d/my.cnf
-    depends_on:
-      - shard1-primary
-    networks:
-      - backend
-
   proxysql:
     image: proxysql/proxysql
     container_name: proxysql
@@ -65,7 +39,6 @@ services:
       - ./proxysql/proxysql.cnf:/etc/proxysql.cnf
     depends_on:
       - shard0-primary
-      - shard1-primary
     networks:
       - backend
 

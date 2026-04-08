@@ -7,8 +7,3 @@ shard0:
   url: jdbc:mysql://localhost:6033/user_db_0
   username: app
   password: app123
-
-shard1:
-  url: jdbc:mysql://localhost:6033/user_db_1
-  username: app
-  password: app123

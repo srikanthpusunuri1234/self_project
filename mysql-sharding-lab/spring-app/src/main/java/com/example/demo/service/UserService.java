@@ -13,10 +13,10 @@ public class UserService {
 
     @Autowired
     private JdbcTemplate shard0;
-
+/*
     @Autowired
     private JdbcTemplate shard1;
-
+*/
     @Autowired
     private StringRedisTemplate redis;
 
@@ -38,7 +38,7 @@ public class UserService {
         JdbcTemplate db;
         String shard;
 
-        if (id % 2 == 0) {
+        if (id % 1 == 0) {
             db = shard0;
             shard = "shard0";
         } else {
@@ -53,7 +53,7 @@ public class UserService {
         );
 
         // 🔵 STORE IN REDIS
-        redis.opsForValue().set(cacheKey, result);
+        redis.opsForValue().set(cacheKey, result, 60, java.util.concurrent.TimeUnit.SECONDS);
 
         Map<String, Object> res = new HashMap<>();
         res.put("source", "db");

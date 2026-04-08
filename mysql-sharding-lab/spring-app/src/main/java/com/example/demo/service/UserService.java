@@ -1,22 +1,26 @@
 package com.example.demo.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class UserService {
 
     @Autowired
+    @Qualifier("shard0")
     private JdbcTemplate shard0;
-/*
+
     @Autowired
+    @Qualifier("shard1")
     private JdbcTemplate shard1;
-*/
+
     @Autowired
     private StringRedisTemplate redis;
 
@@ -24,13 +28,16 @@ public class UserService {
 
         String cacheKey = "user:" + id;
 
-        // 🔴 REDIS CHECK
+        // 🔴 CHECK REDIS
         String cached = redis.opsForValue().get(cacheKey);
 
         if (cached != null) {
+            String[] parts = cached.split(":");
+
             Map<String, Object> res = new HashMap<>();
             res.put("source", "redis");
-            res.put("data", cached);
+            res.put("shard", parts[0]);
+            res.put("data", parts[1]);
             return res;
         }
 
@@ -38,7 +45,7 @@ public class UserService {
         JdbcTemplate db;
         String shard;
 
-        if (id % 1 == 0) {
+        if (id % 2 == 0) {
             db = shard0;
             shard = "shard0";
         } else {
@@ -47,13 +54,14 @@ public class UserService {
         }
 
         String result = db.queryForObject(
-            "SELECT name FROM users WHERE id=?",
-            new Object[]{id},
-            String.class
+                "SELECT name FROM users WHERE id=?",
+                new Object[]{id},
+                String.class
         );
 
-        // 🔵 STORE IN REDIS
-        redis.opsForValue().set(cacheKey, result, 60, java.util.concurrent.TimeUnit.SECONDS);
+        // 🔵 CACHE WITH TTL
+        String value = shard + ":" + result;
+        redis.opsForValue().set(cacheKey, value, 60, TimeUnit.SECONDS);
 
         Map<String, Object> res = new HashMap<>();
         res.put("source", "db");

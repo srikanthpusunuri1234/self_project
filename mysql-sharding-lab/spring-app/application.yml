@@ -4,6 +4,6 @@ spring:
     port: 6379
 
 shard0:
-  url: jdbc:mysql://localhost:6033/user_db_0
+  url: jdbc:mysql://proxysql:6033/user_db_0
   username: app
   password: app123

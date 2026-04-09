@@ -11,6 +11,7 @@ services:
     volumes:
       - shard0-primary-data:/var/lib/mysql
       - ./shard0/primary.cnf:/etc/mysql/conf.d/my.cnf
+      - ./shard0/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - backend
 
@@ -23,6 +24,7 @@ services:
     volumes:
       - shard0-replica-data:/var/lib/mysql
       - ./shard0/replica.cnf:/etc/mysql/conf.d/my.cnf
+      - ./mysqlcerts:/etc/mysql/certs:ro
     depends_on:
       - shard0-primary
     networks:

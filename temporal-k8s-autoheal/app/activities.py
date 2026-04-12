@@ -15,101 +15,124 @@ def load_k8s():
 
 
 # -------------------------------
-# 1. Check Pod Status (REAL CHECK)
+# 1. CLASSIFY FAILURE (CORE LOGIC)
 # -------------------------------
 @activity.defn
-async def check_pod_status(deployment_name: str) -> str:
+async def classify_failure(deployment_name: str) -> str:
     load_k8s()
     v1 = client.CoreV1Api()
 
     try:
         pods = v1.list_namespaced_pod(namespace="default")
 
-        found = False
-
         for pod in pods.items:
             if deployment_name in pod.metadata.name:
-                found = True
-                print(f"[CHECK] Pod: {pod.metadata.name}")
 
-                # ⚠️ If no container status → something wrong
+                print(f"[CLASSIFY] Checking pod: {pod.metadata.name}")
+
                 if not pod.status.container_statuses:
-                    print("[CHECK] No container status found")
-                    return "failed"
+                    return "unknown"
 
-                for container in pod.status.container_statuses:
+                for c in pod.status.container_statuses:
 
-                    # 🔥 Check WAITING state (CrashLoopBackOff etc.)
-                    if container.state.waiting:
-                        reason = container.state.waiting.reason
-                        print(f"[CHECK] Waiting reason: {reason}")
+                    # -------------------------------
+                    # WAITING STATE (CrashLoop / Image issues)
+                    # -------------------------------
+                    if c.state.waiting:
+                        reason = c.state.waiting.reason
+                        print(f"[CLASSIFY] Waiting: {reason}")
 
-                        if reason in [
-                            "CrashLoopBackOff",
-                            "ImagePullBackOff",
-                            "ErrImagePull",
-                            "Error"
-                        ]:
-                            return "failed"
+                        if reason == "CrashLoopBackOff":
+                            return "restart"
 
-                    # 🔥 Check TERMINATED state
-                    if container.state.terminated:
-                        print("[CHECK] Container terminated")
-                        return "failed"
+                        if reason in ["ImagePullBackOff", "ErrImagePull"]:
+                            return "alert"
 
-                    # 🔥 Check restart count
-                    if container.restart_count > 3:
-                        print(f"[CHECK] High restart count: {container.restart_count}")
-                        return "failed"
+                    # -------------------------------
+                    # 🔥 TERMINATED STATE (YOUR FIX HERE)
+                    # -------------------------------
+                    if c.state.terminated:
+                        reason = c.state.terminated.reason
+                        print(f"[CLASSIFY] Terminated: {reason}")
 
-        if not found:
-            print("[CHECK] No matching pods found")
-            return "failed"
+                        if reason == "OOMKilled":
+                            return "scale"
+
+                        if reason in ["Error", "Completed"]:
+                            return "rollback"
+
+                    # -------------------------------
+                    # HIGH RESTART COUNT
+                    # -------------------------------
+                    if c.restart_count > 5:
+                        print("[CLASSIFY] High restart count")
+                        return "restart"
 
         return "healthy"
 
     except ApiException as e:
-        print(f"[ERROR] Kubernetes API error: {e}")
-        return "failed"
+        print(f"[ERROR] Classification failed: {e}")
+        return "unknown"
 
 
 # -------------------------------
-# 2. Restart Deployment
+# 2. TAKE ACTION
 # -------------------------------
 @activity.defn
-async def restart_deployment(deployment_name: str) -> str:
+async def take_action(action: str, deployment_name: str) -> str:
     load_k8s()
     apps = client.AppsV1Api()
 
     try:
-        print(f"[ACTION] Restarting deployment: {deployment_name}")
+        if action == "restart":
+            print("[ACTION] Restarting deployment")
 
-        apps.patch_namespaced_deployment(
-            name=deployment_name,
-            namespace="default",
-            body={
-                "spec": {
-                    "template": {
-                        "metadata": {
-                            "annotations": {
-                                # Force rollout restart
-                                "kubectl.kubernetes.io/restartedAt": str(time.time())
+            apps.patch_namespaced_deployment(
+                name=deployment_name,
+                namespace="default",
+                body={
+                    "spec": {
+                        "template": {
+                            "metadata": {
+                                "annotations": {
+                                    "kubectl.kubernetes.io/restartedAt": str(time.time())
+                                }
                             }
                         }
                     }
-                }
-            },
-        )
+                },
+            )
+            return "restarted"
 
-        return "restarted"
+        elif action == "scale":
+            print("[ACTION] Scaling deployment")
+
+            apps.patch_namespaced_deployment_scale(
+                name=deployment_name,
+                namespace="default",
+                body={"spec": {"replicas": 2}},
+            )
+            return "scaled"
+
+        elif action == "rollback":
+            print("[ACTION] Rollback required (manual or future automation)")
+            return "rollback-needed"
+
+        elif action == "alert":
+            print("[ALERT] Manual intervention required")
+            return "alerted"
+
+        else:
+            print("[INFO] No action needed")
+            return "none"
 
     except ApiException as e:
-        print(f"[ERROR] Failed to restart deployment: {e}")
+        print(f"[ERROR] Action failed: {e}")
         return "failed"
 
 
 # -------------------------------
-# 3. Verify Health After Restart
+# 3. VERIFY HEALTH
 # -------------------------------
 @activity.defn
 async def verify_health(deployment_name: str) -> str:
@@ -122,20 +145,15 @@ async def verify_health(deployment_name: str) -> str:
         for pod in pods.items:
             if deployment_name in pod.metadata.name:
 
-                print(f"[VERIFY] Pod: {pod.metadata.name}")
-
                 if not pod.status.container_statuses:
                     return "failed"
 
-                for container in pod.status.container_statuses:
+                for c in pod.status.container_statuses:
 
-                    if container.state.waiting:
+                    if c.state.waiting or c.state.terminated:
                         return "failed"
 
-                    if container.state.terminated:
-                        return "failed"
-
-                    if container.restart_count > 3:
+                    if c.restart_count > 3:
                         return "failed"
 
                 return "healthy"
@@ -143,5 +161,5 @@ async def verify_health(deployment_name: str) -> str:
         return "failed"
 
     except ApiException as e:
-        print(f"[ERROR] Health check failed: {e}")
+        print(f"[ERROR] Verification failed: {e}")
         return "failed"

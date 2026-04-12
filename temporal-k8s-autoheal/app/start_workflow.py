@@ -8,7 +8,7 @@ async def main():
     result = await client.execute_workflow(
         AutoHealWorkflow.run,
         "bad-app",
-        id="auto-heal-test",
+        id=f"autoheal-{deployment_name}",
         task_queue="devops-task-queue",
     )
 

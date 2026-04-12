@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-fail-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-fail-app
+  template:
+    metadata:
+      labels:
+        app: image-fail-app
+    spec:
+      containers:
+      - name: bad-container
+        image: nonexist12345/image:latest

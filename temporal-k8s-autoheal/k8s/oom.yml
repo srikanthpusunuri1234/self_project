@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oom-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oom-app
+  template:
+    metadata:
+      labels:
+        app: oom-app
+    spec:
+      containers:
+      - name: oom-container
+        image: python:3.9
+        command: ["python", "-c", "a = []; while True: a.append('A'*10**6)"]
+        resources:
+          limits:
+            memory: "50Mi"

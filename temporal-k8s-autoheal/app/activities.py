@@ -1,11 +1,11 @@
 from temporalio import activity
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+import subprocess
 import time
 
-
 # -------------------------------
-# Load Kubernetes config
+# K8s Config
 # -------------------------------
 def load_k8s():
     try:
@@ -18,7 +18,7 @@ def load_k8s():
 # CLASSIFY FAILURE
 # -------------------------------
 @activity.defn
-async def classify_failure(deployment_name: str) -> str:
+async def classify_failure(deployment_name: str) -> dict:
     load_k8s()
     v1 = client.CoreV1Api()
 
@@ -28,58 +28,54 @@ async def classify_failure(deployment_name: str) -> str:
         for pod in pods.items:
             if deployment_name in pod.metadata.name:
 
-                print(f"[CLASSIFY] Checking pod: {pod.metadata.name}")
-
                 if not pod.status.container_statuses:
-                    return "unknown"
+                    return {"status": "unknown"}
 
                 for c in pod.status.container_statuses:
 
-                    # WAITING STATE
+                    # WAITING
                     if c.state.waiting:
                         reason = c.state.waiting.reason
-                        print(f"[CLASSIFY] Waiting: {reason}")
 
                         if reason == "CrashLoopBackOff":
-                            return "restart"
+                            return {"action": "restart"}
 
                         if reason in ["ImagePullBackOff", "ErrImagePull"]:
-                            return "alert"
+                            return {"action": "alert"}
 
-                    # TERMINATED STATE
+                    # TERMINATED
                     if c.state.terminated:
                         reason = c.state.terminated.reason
-                        print(f"[CLASSIFY] Terminated: {reason}")
 
                         if reason == "OOMKilled":
-                            return "scale"
+                            return {"action": "scale"}
 
                         if reason in ["Error", "Completed"]:
-                            return "rollback"
+                            return {"action": "rollback"}
 
-                    # HIGH RESTART COUNT
+                    # RESTART COUNT
                     if c.restart_count > 5:
-                        print("[CLASSIFY] High restart count")
-                        return "restart"
+                        return {"action": "restart"}
 
-        return "healthy"
+        return {"action": "healthy"}
 
-    except ApiException as e:
-        print(f"[ERROR] Classification failed: {e}")
-        return "unknown"
+    except Exception as e:
+        return {"action": "unknown", "error": str(e)}
 
 
 # -------------------------------
-# TAKE ACTION (FIXED: SINGLE ARG)
+# TAKE ACTION (SMART)
 # -------------------------------
 @activity.defn
-async def take_action(input_data: tuple) -> str:
-    action, deployment_name = input_data
+async def take_action(input_data: dict) -> str:
+    action = input_data["action"]
+    deployment_name = input_data["deployment"]
 
     load_k8s()
     apps = client.AppsV1Api()
 
     try:
+        # ------------------ RESTART ------------------
         if action == "restart":
             print("[ACTION] Restarting deployment")
 
@@ -91,7 +87,7 @@ async def take_action(input_data: tuple) -> str:
                         "template": {
                             "metadata": {
                                 "annotations": {
-                                    "kubectl.kubernetes.io/restartedAt": str(time.time())
+                                    "restartedAt": str(time.time())
                                 }
                             }
                         }
@@ -100,6 +96,7 @@ async def take_action(input_data: tuple) -> str:
             )
             return "restarted"
 
+        # ------------------ SCALE ------------------
         elif action == "scale":
             print("[ACTION] Scaling deployment")
 
@@ -110,20 +107,28 @@ async def take_action(input_data: tuple) -> str:
             )
             return "scaled"
 
+        # ------------------ ROLLBACK ------------------
         elif action == "rollback":
-            print("[ACTION] Rollback required (not implemented yet)")
-            return "rollback-needed"
+            print("[ACTION] Rolling back deployment")
 
+            subprocess.run([
+                "kubectl",
+                "rollout",
+                "undo",
+                f"deployment/{deployment_name}"
+            ])
+
+            return "rolled-back"
+
+        # ------------------ ALERT ------------------
         elif action == "alert":
             print("[ALERT] Manual intervention required")
             return "alerted"
 
-        else:
-            print("[INFO] No action needed")
-            return "none"
+        return "none"
 
-    except ApiException as e:
-        print(f"[ERROR] Action failed: {e}")
+    except Exception as e:
+        print(f"[ERROR] {e}")
         return "failed"
 
 
@@ -156,6 +161,5 @@ async def verify_health(deployment_name: str) -> str:
 
         return "failed"
 
-    except ApiException as e:
-        print(f"[ERROR] Verification failed: {e}")
+    except Exception:
         return "failed"

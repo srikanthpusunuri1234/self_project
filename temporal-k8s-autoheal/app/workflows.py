@@ -8,31 +8,46 @@ class AutoHealWorkflow:
     @workflow.run
     async def run(self, deployment_name: str):
 
-        # STEP 1: CLASSIFY
-        action = await workflow.execute_activity(
-            "classify_failure",
-            deployment_name,
-            start_to_close_timeout=timedelta(seconds=10),
-        )
+        max_retries = 3
 
-        if action == "healthy":
-            return "Already healthy"
+        for attempt in range(max_retries):
 
-        # STEP 2: TAKE ACTION (FIXED: SINGLE ARG)
-        result = await workflow.execute_activity(
-            "take_action",
-            (action, deployment_name),   # ✅ tuple
-            start_to_close_timeout=timedelta(seconds=20),
-        )
+            # ---------------- CLASSIFY ----------------
+            result = await workflow.execute_activity(
+                "classify_failure",
+                deployment_name,
+                start_to_close_timeout=timedelta(seconds=10),
+            )
 
-        # STEP 3: WAIT
-        await workflow.sleep(10)
+            action = result.get("action")
 
-        # STEP 4: VERIFY
-        status = await workflow.execute_activity(
-            "verify_health",
-            deployment_name,
-            start_to_close_timeout=timedelta(seconds=10),
-        )
+            if action == "healthy":
+                return "Recovered automatically"
 
-        return f"Action: {action}, Result: {status}"
+            if action == "alert":
+                return "Alert sent - manual fix needed"
+
+            # ---------------- TAKE ACTION ----------------
+            await workflow.execute_activity(
+                "take_action",
+                {
+                    "action": action,
+                    "deployment": deployment_name
+                },
+                start_to_close_timeout=timedelta(seconds=20),
+            )
+
+            # ---------------- COOLDOWN ----------------
+            await workflow.sleep(10)
+
+            # ---------------- VERIFY ----------------
+            status = await workflow.execute_activity(
+                "verify_health",
+                deployment_name,
+                start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            if status == "healthy":
+                return f"Recovered after {attempt+1} attempts"
+
+        return "Failed after retries"

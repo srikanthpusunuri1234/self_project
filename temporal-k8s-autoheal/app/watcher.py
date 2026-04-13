@@ -1,8 +1,9 @@
 from kubernetes import client, config, watch
 import asyncio
 from temporalio.client import Client
+from workflows import AutoHealWorkflow
 
-# Load kube config
+
 def load_k8s():
     try:
         config.load_kube_config()
@@ -10,13 +11,10 @@ def load_k8s():
         config.load_incluster_config()
 
 
-# Extract deployment name from pod
 def get_deployment_name(pod_name):
-    # Example: bad-app-7f9c8d7b6d-abcde → bad-app
     return "-".join(pod_name.split("-")[:-2])
 
 
-# Check if pod is unhealthy
 def is_unhealthy(pod):
     if not pod.status.container_statuses:
         return False
@@ -24,8 +22,7 @@ def is_unhealthy(pod):
     for c in pod.status.container_statuses:
 
         if c.state.waiting:
-            reason = c.state.waiting.reason
-            if reason in [
+            if c.state.waiting.reason in [
                 "CrashLoopBackOff",
                 "ImagePullBackOff",
                 "ErrImagePull"
@@ -41,7 +38,6 @@ def is_unhealthy(pod):
     return False
 
 
-# Trigger Temporal workflow
 async def trigger_workflow(deployment_name):
     client = await Client.connect("localhost:7233")
 
@@ -49,7 +45,7 @@ async def trigger_workflow(deployment_name):
 
     try:
         await client.start_workflow(
-            "AutoHealWorkflow.run",
+            AutoHealWorkflow.run,   # ✅ FIXED
             deployment_name,
             id=workflow_id,
             task_queue="devops-task-queue",
@@ -60,7 +56,6 @@ async def trigger_workflow(deployment_name):
         print(f"[INFO] Workflow already running or error: {e}")
 
 
-# Watch pods continuously
 async def watch_pods():
     load_k8s()
     v1 = client.CoreV1Api()

@@ -3,7 +3,8 @@ from temporalio.worker import Worker
 from temporalio.client import Client
 
 from workflows import AutoHealWorkflow
-from activities import check_pod_status, restart_deployment, verify_health
+from activities import classify_failure, take_action, verify_health
+
 
 async def main():
     client = await Client.connect("localhost:7233")
@@ -13,8 +14,8 @@ async def main():
         task_queue="devops-task-queue",
         workflows=[AutoHealWorkflow],
         activities=[
-            check_pod_status,
-            restart_deployment,
+            classify_failure,
+            take_action,
             verify_health,
         ],
     )
@@ -22,4 +23,6 @@ async def main():
     print("Worker started...")
     await worker.run()
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    asyncio.run(main())

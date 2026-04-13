@@ -15,7 +15,7 @@ def load_k8s():
 
 
 # -------------------------------
-# 1. CLASSIFY FAILURE (CORE LOGIC)
+# CLASSIFY FAILURE
 # -------------------------------
 @activity.defn
 async def classify_failure(deployment_name: str) -> str:
@@ -35,9 +35,7 @@ async def classify_failure(deployment_name: str) -> str:
 
                 for c in pod.status.container_statuses:
 
-                    # -------------------------------
-                    # WAITING STATE (CrashLoop / Image issues)
-                    # -------------------------------
+                    # WAITING STATE
                     if c.state.waiting:
                         reason = c.state.waiting.reason
                         print(f"[CLASSIFY] Waiting: {reason}")
@@ -48,9 +46,7 @@ async def classify_failure(deployment_name: str) -> str:
                         if reason in ["ImagePullBackOff", "ErrImagePull"]:
                             return "alert"
 
-                    # -------------------------------
-                    # 🔥 TERMINATED STATE (YOUR FIX HERE)
-                    # -------------------------------
+                    # TERMINATED STATE
                     if c.state.terminated:
                         reason = c.state.terminated.reason
                         print(f"[CLASSIFY] Terminated: {reason}")
@@ -61,9 +57,7 @@ async def classify_failure(deployment_name: str) -> str:
                         if reason in ["Error", "Completed"]:
                             return "rollback"
 
-                    # -------------------------------
                     # HIGH RESTART COUNT
-                    # -------------------------------
                     if c.restart_count > 5:
                         print("[CLASSIFY] High restart count")
                         return "restart"
@@ -76,10 +70,12 @@ async def classify_failure(deployment_name: str) -> str:
 
 
 # -------------------------------
-# 2. TAKE ACTION
+# TAKE ACTION (FIXED: SINGLE ARG)
 # -------------------------------
 @activity.defn
-async def take_action(action: str, deployment_name: str) -> str:
+async def take_action(input_data: tuple) -> str:
+    action, deployment_name = input_data
+
     load_k8s()
     apps = client.AppsV1Api()
 
@@ -115,7 +111,7 @@ async def take_action(action: str, deployment_name: str) -> str:
             return "scaled"
 
         elif action == "rollback":
-            print("[ACTION] Rollback required (manual or future automation)")
+            print("[ACTION] Rollback required (not implemented yet)")
             return "rollback-needed"
 
         elif action == "alert":
@@ -132,7 +128,7 @@ async def take_action(action: str, deployment_name: str) -> str:
 
 
 # -------------------------------
-# 3. VERIFY HEALTH
+# VERIFY HEALTH
 # -------------------------------
 @activity.defn
 async def verify_health(deployment_name: str) -> str:

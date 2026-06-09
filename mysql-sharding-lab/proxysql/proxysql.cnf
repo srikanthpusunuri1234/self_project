@@ -1,0 +1,41 @@
+datadir="/var/lib/proxysql"
+
+admin_variables=
+{
+  admin_credentials="admin:admin"
+  mysql_ifaces="0.0.0.0:6032"
+}
+
+mysql_variables=
+{
+  threads=4
+  max_connections=2048
+}
+
+mysql_servers =
+(
+  { address="shard0-primary", port=3306, hostgroup=10 },
+  { address="shard0-replica", port=3306, hostgroup=11 },
+
+  { address="shard1-primary", port=3306, hostgroup=20 },
+  { address="shard1-replica", port=3306, hostgroup=21 }
+)
+
+mysql_users:
+(
+  {
+    username = "app"
+    password = "app123"
+    default_hostgroup = 10
+  }
+)
+
+mysql_query_rules:
+(
+  {
+    rule_id=1
+    match_pattern="^SELECT.*"
+    destination_hostgroup=11
+    apply=1
+  }
+)

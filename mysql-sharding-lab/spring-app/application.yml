@@ -1,0 +1,9 @@
+spring:
+  redis:
+    host: localhost
+    port: 6379
+
+shard0:
+  url: jdbc:mysql://proxysql:6033/user_db_0
+  username: app
+  password: app123

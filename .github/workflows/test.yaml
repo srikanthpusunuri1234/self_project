@@ -1,0 +1,18 @@
+name: Intentional CI Failure Test
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  break-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+
+    - name: Run a broken command
+      run: |
+        echo "Starting deployment checks..."
+        # This non-existent command will throw a command-not-found error and exit 1
+        execute-faulty-devops-script --deploy=true
